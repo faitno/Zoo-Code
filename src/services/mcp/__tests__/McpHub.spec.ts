@@ -2692,6 +2692,35 @@ describe("McpHub", () => {
 			expect(mockAuthProvider.close).toHaveBeenCalled()
 		})
 
+		it("should dispose the cancellation listener when the OAuth flow times out", async () => {
+			vi.useFakeTimers()
+			const mockDispose = vi.fn()
+			vsc.window.withProgress.mockImplementationOnce((_options: any, task: any) => {
+				const progress = { report: vi.fn() }
+				const cancellationToken = {
+					isCancellationRequested: false,
+					onCancellationRequested: vi.fn(() => ({ dispose: mockDispose })),
+				}
+				return task(progress, cancellationToken)
+			})
+			vsc.window.showInformationMessage.mockImplementation(() => new Promise(() => {}))
+
+			const flowPromise = (mcpHub as any)._initiateOAuthFlow(
+				serverName,
+				source,
+				config,
+				mockAuthProvider,
+				mockTransport,
+				mockConnection,
+			)
+
+			await vi.advanceTimersByTimeAsync(OAUTH_FLOW_TIMEOUT_MS)
+			await flowPromise
+
+			// cleanup(cancellationDisposable) inside the timeout handler must dispose the listener
+			expect(mockDispose).toHaveBeenCalled()
+		})
+
 		it("should resolve without calling _completeOAuthFlow when tokens exist at click time", async () => {
 			// Tokens are present when Authenticate is clicked (click-time guard in the loop).
 			// First call (pre-withProgress early-return check) returns null so withProgress runs.
